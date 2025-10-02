@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Flask + LaunchDarkly: Web & API</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 2rem; }
+      .banner { padding: 1rem; border-radius: 12px; margin-bottom: 1rem; background: #eef6ff; }
+      .muted { color: #666; }
+      code { background: #f5f5f5; padding: 2px 6px; border-radius: 6px; }
+      a { text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <h1>Flask + LaunchDarkly</h1>
+    {% if banner_on %}
+      <div class="banner">🎉 Feature flag <code>{{ flag_key }}</code> is ON — showing the promo banner!</div>
+    {% else %}
+      <div class="banner muted">🚧 Feature flag <code>{{ flag_key }}</code> is OFF — banner hidden by default.</div>
+    {% endif %}
+
+    <h2>Try the API</h2>
+    <p>
+      Call the JSON API to evaluate a flag:
+      <br>
+      <code>/api/flag/&lt;flag_key&gt;?user=alice</code>
+    </p>
+    <ul>
+      <li><a href="/api/flag/sample-flag?user=alice">/api/flag/sample-flag?user=alice</a></li>
+      <li><a href="/api/flag/sample-flag?user=bob">/api/flag/sample-flag?user=bob</a></li>
+    </ul>
+
+    <p class="muted">Tip: Set your SDK key in <code>.env</code> (see <code>.env.example</code>), then start with Gunicorn: <code>gunicorn --config gunicorn.conf.py --preload app:app</code></p>
+  </body>
+</html>

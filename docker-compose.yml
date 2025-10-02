@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - LAUNCHDARKLY_SDK_KEY=${LAUNCHDARKLY_SDK_KEY}
+      - LD_FLAG_KEY_WEB_BANNER=${LD_FLAG_KEY_WEB_BANNER:-web-banner}
+    env_file:
+      - .env
+    volumes:
+      # Mount code for development (optional - comment out for production)
+      - ./app.py:/app/app.py
+      - ./templates:/app/templates
+    restart: unless-stopped 

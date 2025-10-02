@@ -1,0 +1,4 @@
+flask>=3.0
+gunicorn>=21.2
+launchdarkly-server-sdk>=9.11.0
+python-dotenv>=1.0

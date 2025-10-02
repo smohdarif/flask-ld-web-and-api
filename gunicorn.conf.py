@@ -4,7 +4,8 @@ import ldclient
 
 bind = "0.0.0.0:8000"
 workers = 2
-# LaunchDarkly SDK requires multiple threads for flag updates and event delivery
+# Use multiple threads for better concurrency with I/O-bound operations
+# LaunchDarkly SDK manages its own internal threads automatically
 threads = 2
 timeout = 30
 accesslog = "-"

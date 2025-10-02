@@ -108,8 +108,9 @@ def post_fork(server, worker):
 ```python
 # gunicorn.conf.py
 workers = 2   # Multiple worker processes
-threads = 2   # Multiple threads per worker (required for LD)
+threads = 2   # For concurrent HTTP requests
 ```
+**Note**: LaunchDarkly SDK creates its own internal threads automatically. The `threads` setting is for HTTP concurrency, not a LaunchDarkly requirement.
 
 ## Architecture
 

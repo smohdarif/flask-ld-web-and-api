@@ -344,14 +344,17 @@ threads = 2-4
 
 ### LaunchDarkly Consideration:
 
-**Important**: LaunchDarkly SDK requires **at least 2 threads** for:
-- Thread 1: Background streaming (flag updates)
-- Thread 2: Event processing (analytics)
+**Important Note**: The LaunchDarkly SDK **creates its own internal threads automatically** for:
+- Background streaming (flag updates)
+- Event processing (analytics)
 
-So minimum configuration should be:
+These are **separate from Gunicorn worker threads**. You can set `threads` to any value ≥ 1 based on your HTTP concurrency needs. What matters for LaunchDarkly is calling `postfork()` after forking so the SDK can recreate its internal threads.
+
 ```python
-threads = 2  # Never set to 1 with LaunchDarkly!
+threads = 2  # Good for I/O concurrency, not a LaunchDarkly requirement
 ```
+
+Reference: [LaunchDarkly Python SDK Documentation](https://docs.launchdarkly.com/sdk/server-side/python/#considerations-with-worker-based-servers)
 
 ---
 

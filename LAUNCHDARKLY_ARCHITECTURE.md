@@ -234,13 +234,14 @@ preload_app = True
 ```python
 # gunicorn.conf.py - Lines 6-8
 workers = 2   # Multiple worker processes
-threads = 2   # Multiple threads per worker
+threads = 2   # For concurrent HTTP requests
 ```
 
-**Why:** LaunchDarkly SDK **requires** multiple threads for:
-- Receiving real-time flag updates (streaming)
+**Why:** Multiple threads allow better concurrency for I/O-bound operations. Note that LaunchDarkly SDK **manages its own internal threads automatically** for:
+- Receiving real-time flag updates (streaming)  
 - Sending analytics events
-- Background polling (fallback)
+
+These internal threads are separate from Gunicorn worker threads and are recreated via `postfork()` after forking.
 
 ### ✅ 4. Post-Fork Hook
 

@@ -33,13 +33,12 @@ def init_launchdarkly(app):
         )
     
     # Initialize LaunchDarkly with non-blocking startup
-    # start_wait=0 ensures app doesn't block during initialization
-    ld_config = Config(
-        sdk_key=sdk_key,
-        start_wait=0  # Non-blocking: best practice for production apps
-    )
+    # Simply calling set_config and get() without waiting ensures
+    # the SDK initializes in the background (non-blocking)
+    ld_config = Config(sdk_key=sdk_key)
     
     ldclient.set_config(ld_config)
+    # get() returns immediately, SDK initializes in background
     client = ldclient.get()
     
     # Store in Flask's extensions dict (Flask convention)

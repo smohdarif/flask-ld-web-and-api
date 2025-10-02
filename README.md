@@ -159,6 +159,7 @@ flask-ld-web-and-api/
 ├── README.md                       # Project overview (this file)
 ├── DOCKER_QUICKSTART.md            # Quick start guide for Docker
 ├── LAUNCHDARKLY_ARCHITECTURE.md    # Technical architecture deep-dive
+├── GUNICORN_FAQ.md                 # Workers, ports & architecture FAQ
 ├── templates/
 │   └── index.html                  # Web page template
 ├── .env                            # Local environment variables (git-ignored)

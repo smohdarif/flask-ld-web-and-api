@@ -21,5 +21,5 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Run with Gunicorn using the postfork configuration
-CMD ["gunicorn", "--config", "gunicorn.conf.py", "app:app"] 
+# Run with Gunicorn using the factory pattern (flask-idiomatic-functions branch)
+CMD ["gunicorn", "app_idiomatic:create_app()", "--config", "gunicorn.conf.py"] 

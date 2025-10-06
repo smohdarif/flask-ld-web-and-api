@@ -1,60 +1,31 @@
-import os
-import atexit
-from flask import Flask, jsonify, render_template, request
-from dotenv import load_dotenv
+"""
+Flask + LaunchDarkly: Web & API Demo
 
-# Load .env for local/dev
-load_dotenv()
+A production-ready Flask application demonstrating LaunchDarkly feature flag
+integration with both server-side rendering and REST API endpoints.
 
-from ldclient.config import Config
-from ldclient import Context
-import ldclient
+This is the main application entry point that:
+1. Initializes the Flask app
+2. Registers middleware
+3. Registers routes
 
-# ---------------------------
-# 1) Initialize LD BEFORE forking (works best with Gunicorn --preload)
-# ---------------------------
-SDK_KEY = os.getenv("LAUNCHDARKLY_SDK_KEY", "")
-if not SDK_KEY:
-    raise RuntimeError("Set LAUNCHDARKLY_SDK_KEY in your environment or .env file.")
+The LaunchDarkly client is initialized in the launchdarkly package before
+this module is loaded, ensuring proper singleton initialization before
+Gunicorn forks workers.
+"""
+from flask import Flask
 
-ldclient.set_config(Config(SDK_KEY))
-ld = ldclient.get()
+# Import to trigger LD client initialization (must happen before forking)
+import launchdarkly  # noqa: F401
 
-# Ensure clean shutdown
-@atexit.register
-def _close_ld():
-    try:
-        ld.close()
-    except Exception:
-        pass
+from middleware import register_middleware
+from routes import register_routes
 
+# Create Flask application
 app = Flask(__name__)
 
-def user_context_from_request():
-    # Very basic demo context; in real apps, include real user attributes.
-    user_key = request.args.get("user", "anon")
-    return Context.builder(user_key).build()
+# Register middleware (context building, tracking)
+register_middleware(app)
 
-@app.get("/")
-def home():
-    """Server-side rendered page that uses a flag to toggle a banner."""
-    flag_key = os.getenv("LD_FLAG_KEY_WEB_BANNER", "web-banner")
-    ctx = Context.builder("web-visitor").build()
-    banner_on = ld.variation(flag_key, ctx, default=False)
-    return render_template("index.html", banner_on=banner_on, flag_key=flag_key)
-
-@app.get("/api/flag/<flag_key>")
-def read_flag(flag_key):
-    """Simple JSON API to evaluate any flag for a given user (?user=key)."""
-    ctx = user_context_from_request()
-    value = ld.variation(flag_key, ctx, default=False)
-    user_key = request.args.get("user", "anon")
-    return jsonify({
-        "flag": flag_key,
-        "user": user_key,
-        "value": value
-    })
-
-@app.get("/health")
-def health():
-    return "ok", 200
+# Register routes (web pages, API endpoints)
+register_routes(app)

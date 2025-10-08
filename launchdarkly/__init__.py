@@ -21,6 +21,7 @@ ld_client = ldclient.get()
 def _close_ld():
     """Close LaunchDarkly client on application shutdown."""
     try:
+        ld_client.flush()
         ld_client.close()
     except Exception:
         pass

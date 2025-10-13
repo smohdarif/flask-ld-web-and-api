@@ -4,13 +4,124 @@ This document explains how the LaunchDarkly SDK integration works in this Flask 
 
 ## Table of Contents
 
-1. [The Singleton Pattern](#the-singleton-pattern)
-2. [Worker-Based Server Challenge](#worker-based-server-challenge)
-3. [The postfork() Solution](#the-postfork-solution)
-4. [Architecture Flow](#architecture-flow)
-5. [Best Practices Implementation](#best-practices-implementation)
-6. [Common Misconceptions](#common-misconceptions)
-7. [Production Considerations](#production-considerations)
+1. [The Flask Extension Pattern](#the-flask-extension-pattern)
+2. [The Singleton Pattern](#the-singleton-pattern)
+3. [Worker-Based Server Challenge](#worker-based-server-challenge)
+4. [The postfork() Solution](#the-postfork-solution)
+5. [Architecture Flow](#architecture-flow)
+6. [Best Practices Implementation](#best-practices-implementation)
+7. [Common Misconceptions](#common-misconceptions)
+8. [Production Considerations](#production-considerations)
+
+---
+
+## The Flask Extension Pattern
+
+### Modern Flask Integration
+
+This application now uses the idiomatic Flask extension pattern:
+
+```python
+# app.py - Extension initialization
+from launchdarkly import LaunchDarkly
+from launchdarkly.contexts import add_context, create_request_context
+from flask import request
+
+app = Flask(__name__)
+
+# Initialize extension with LaunchDarkly client
+ld = LaunchDarkly(ldclient.get(), app)
+
+# Add contexts to the request
+@app.before_request
+def build_request_context():
+    add_context(create_request_context())
+```
+
+### Extension Benefits
+
+✅ **Idiomatic Flask pattern** - Follows Flask extension conventions  
+✅ **Clean separation** - Extension logic isolated from app logic  
+✅ **Flexible initialization** - Supports both immediate and deferred init  
+✅ **Context management** - Built-in context building and management  
+✅ **Jinja2 template helpers** - Seamless flag evaluation in templates  
+✅ **Error handling** - Proper logging and error recovery  
+
+### Context Management
+
+Context management is handled through dedicated functions in `launchdarkly.contexts`:
+
+```python
+from launchdarkly.contexts import create_request_context, add_context, replace_context, get_context
+from ldclient import Context
+
+# Create contexts
+request_ctx = create_request_context()
+user_ctx = Context.builder('user123').kind('user').set('email', 'user@example.com').build()
+
+# Manage request contexts
+replace_context(user_ctx)  # Replace entire context
+add_context(request_ctx)   # Add to existing context (creates multi-context)
+
+# Get current context
+current_ctx = get_context()
+```
+
+The extension provides flexible context building:
+
+```python
+# Global context builders (run for all requests)
+@app.before_request
+def build_user_context():
+    if hasattr(g, 'current_user') and g.current_user:
+        user_ctx = Context.builder(g.current_user.id).kind('user').set('email', g.current_user.email).build()
+        add_context(user_ctx)
+
+# Per-route context (only for specific routes)
+from launchdarkly.decorators import with_context
+
+@with_context(lambda: Context.builder('admin').kind('role').build())
+def admin_route():
+    if variation('admin-dashboard', False):
+        return render_template('admin.html')
+    abort(403)
+```
+
+### Jinja2 Template Helpers
+
+The extension automatically registers template helpers for seamless flag evaluation in Jinja2 templates:
+
+```python
+# Extension automatically registers these helpers in init_app()
+app.jinja_env.globals['ld_variation'] = self.variation
+app.jinja_env.globals['ld_context'] = lambda: get_context()
+```
+
+**Template Usage:**
+
+```jinja2
+<!-- Simple flag evaluation -->
+{{ ld_variation('config-welcome-message', 'hello there!') }}
+
+<!-- Conditional rendering -->
+{% if ld_variation('show-banner', False) %}
+    <div class="banner">New feature!</div>
+{% endif %}
+
+<!-- Different data types -->
+{{ ld_variation('theme', 'light') }}          <!-- String -->
+{{ ld_variation('max-items', 10) }}          <!-- Number -->
+{{ ld_variation('feature-enabled', False) }}  <!-- Boolean -->
+
+<!-- Context information -->
+{{ ld_context() }}
+```
+
+**Benefits:**
+- ✅ **No Python code in templates** - Pure template logic
+- ✅ **Type-safe defaults** - Supports strings, numbers, booleans
+- ✅ **Context-aware** - Uses current request context automatically
+- ✅ **Error resilient** - Returns defaults on evaluation failure
 
 ---
 
@@ -21,7 +132,7 @@ This document explains how the LaunchDarkly SDK integration works in this Flask 
 The LaunchDarkly SDK uses a **singleton pattern** to manage the client instance. This is crucial to understand:
 
 ```python
-# app.py - Lines 20-21
+# Extension initialization
 ldclient.set_config(Config(SDK_KEY))  # ← Creates ONE client instance (singleton)
 ld = ldclient.get()                    # ← Gets reference to that SAME instance
 ```
@@ -61,7 +172,7 @@ When using worker-based servers like Gunicorn, the process forking creates a cri
 │  LD Client                           │
 │  ├─ Background Thread 1 (streaming) │
 │  ├─ Background Thread 2 (events)    │
-│  └─ Background Thread 3 (polling)   │
+│  └─ Background Thread 3 (polling) │
 └──────────────────────────────────────┘
               │
               │ fork()
@@ -150,7 +261,7 @@ After Fork (WITH postfork):
 ```
 1. Application Startup (app.py)
    ↓
-   ldclient.set_config(Config(SDK_KEY))
+   ld = LaunchDarkly(app, config=get_ld_config())
    ├─ Creates singleton client
    ├─ Initializes threads
    └─ Opens streaming connection
@@ -174,7 +285,7 @@ After Fork (WITH postfork):
    
 5. Request Handling
    ↓
-   Each request uses ldclient.get() to access the same client
+   Each request uses ld.variation() to access the same client
    └─ Fast, thread-safe flag evaluations
 ```
 
@@ -212,10 +323,8 @@ After Fork (WITH postfork):
 ### ✅ 1. Pre-Fork Initialization
 
 ```python
-# app.py - Lines 20-21
-# Initialize LD client BEFORE Gunicorn forks workers
-ldclient.set_config(Config(SDK_KEY))
-ld = ldclient.get()
+# app.py - Extension initialization
+ld = LaunchDarkly(app, config=get_ld_config())
 ```
 
 **Why:** Creates the singleton once, reducing memory and initialization overhead.
@@ -257,13 +366,8 @@ def post_fork(server, worker):
 ### ✅ 5. Clean Shutdown
 
 ```python
-# app.py - Lines 23-29
-@atexit.register
-def _close_ld():
-    try:
-        ld.close()
-    except Exception:
-        pass
+# Extension handles shutdown automatically
+atexit.register(self.shutdown)
 ```
 
 **Why:** Gracefully closes streaming connections and flushes pending events.
@@ -375,10 +479,11 @@ Look for:
 
 **Key Takeaways:**
 
-1. 🔑 **Singleton Pattern** - `ldclient.get()` always returns the SAME instance
-2. 🔄 **postfork() ≠ New Client** - Only recreates threads, not the client
-3. ⚡ **Essential, Not Optional** - postfork() is required for real-time functionality
-4. 🐳 **Docker Recommended** - Avoids environment-specific issues
-5. 📊 **Monitor Logs** - Always verify postfork() success in production
+1. 🔑 **Flask Extension Pattern** - Idiomatic integration following Flask conventions
+2. 🔑 **Singleton Pattern** - `ldclient.get()` always returns the SAME instance
+3. 🔄 **postfork() ≠ New Client** - Only recreates threads, not the client
+4. ⚡ **Essential, Not Optional** - postfork() is required for real-time functionality
+5. 🐳 **Docker Recommended** - Avoids environment-specific issues
+6. 📊 **Monitor Logs** - Always verify postfork() success in production
 
-This architecture provides a production-ready, efficient, and maintainable LaunchDarkly integration that follows all official best practices. 
+This architecture provides a production-ready, efficient, and maintainable LaunchDarkly integration that follows all official best practices and Flask conventions. 

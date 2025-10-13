@@ -25,18 +25,14 @@ The application follows a **layered, modular architecture** with clear separatio
 
 ```
 flask-ld-web-and-api/
-├── app.py                      # Application entry point (28 lines)
+├── app.py                      # Application entry point (66 lines)
 ├── config.py                   # Configuration management
 │
 ├── launchdarkly/               # LaunchDarkly integration
-│   ├── __init__.py            # Client initialization & lifecycle
-│   ├── contexts.py            # Context builders (user, request)
-│   └── flags.py               # Flag evaluation wrappers
-│
-├── middleware/                 # Request/response middleware
-│   ├── __init__.py            # Middleware registration
-│   ├── context.py             # Context building middleware
-│   └── tracking.py            # Duration & error tracking
+│   ├── __init__.py            # Flask extension & client lifecycle
+│   ├── contexts.py            # Context builders and management
+│   ├── decorators.py          # Route decorators (require_flag, track_*, etc.)
+│   └── middleware.py           # Request tracking middleware
 │
 ├── routes/                     # HTTP route handlers
 │   ├── __init__.py            # Blueprint registration
@@ -44,10 +40,19 @@ flask-ld-web-and-api/
 │   └── api.py                 # REST API endpoints
 │
 ├── templates/                  # Jinja2 templates
-│   └── index.html
+│   └── demo.html              # Home page with template helpers
+│
+├── tests/                      # Test suite
+│   ├── conftest.py            # Pytest configuration
+│   ├── test_contexts.py       # Context management tests
+│   ├── test_decorators.py     # Decorator tests
+│   ├── test_launchdarkly_extension.py # Extension tests
+│   ├── test_middleware.py     # Middleware tests
+│   └── test_template_helpers.py # Template helper tests
 │
 ├── gunicorn.conf.py           # Gunicorn configuration
 ├── requirements.txt           # Python dependencies
+├── pytest.ini                # Pytest configuration
 └── Dockerfile                 # Container definition
 ```
 
@@ -56,95 +61,86 @@ flask-ld-web-and-api/
 ### `app.py` - Application Entry Point
 **Responsibility**: Minimal orchestration
 - Creates Flask app instance
-- Imports launchdarkly package (triggers client initialization)
-- Registers middleware
+- Configures LaunchDarkly client with environment variables
+- Initializes LaunchDarkly extension
+- Registers context builders
 - Registers routes
 
-**Size**: 28 lines (down from 173 lines!)
+**Size**: 66 lines (streamlined Flask extension pattern)
 
 ### `config.py` - Configuration Management
-**Responsibility**: Environment variable loading and validation
+**Responsibility**: Environment variable loading and logging configuration
 - Loads `.env` file
-- Defines `Config` class with all settings
-- Validates required configuration
+- Provides logging configuration for Flask and LaunchDarkly
+- Centralizes configuration management
 
 ### `launchdarkly/` - LaunchDarkly Integration
 
-#### `__init__.py` - Client Lifecycle
-**Responsibility**: Singleton client initialization
-- Initializes LD client before Gunicorn forking
-- Registers shutdown handler
-- Provides `get_client()` accessor
+#### `__init__.py` - Flask Extension
+**Responsibility**: Flask extension pattern implementation
+- Provides `LaunchDarkly` extension class
+- Manages client lifecycle and shutdown
+- Registers Jinja2 template helpers
+- Provides `variation()` and `track()` convenience functions
 
-#### `contexts.py` - Context Builders
-**Responsibility**: Build LD contexts from various sources
-- `user_to_ld_context()` - Build user contexts
-- `request_to_ld_context()` - Build request contexts with metadata
+#### `contexts.py` - Context Management
+**Responsibility**: Context builders and management functions
+- `create_request_context()` - Build request contexts with metadata
+- `add_context()`, `replace_context()`, `remove_context()` - Context management
+- `get_context()` - Access current request context
+- `use_context()` - Context manager for temporary contexts
 
-#### `flags.py` - Flag Evaluation
-**Responsibility**: Convenient flag evaluation wrappers
-- `get_flag()` - Uses `g.ld_context` from request
-- `get_flag_with_context()` - Uses explicit context
+#### `decorators.py` - Route Decorators
+**Responsibility**: Convenient decorators for common patterns
+- `require_flag()` - Feature-gate routes based on flag values
+- `with_context()` - Add specific contexts to routes
+- `track_after()`, `track_before()` - Event tracking decorators
 
-### `middleware/` - Request/Response Middleware
-
-#### `__init__.py` - Middleware Registration
-**Responsibility**: Central middleware registration
-- `register_middleware()` - Registers all middleware
-
-#### `context.py` - Context Middleware
-**Responsibility**: Build contexts before each request
-- Extracts user key from query params
-- Builds user context → `g.ld_context`
-- Builds request context → `g.ld_request_context`
-- Tracks request start time → `g.request_start_time`
-
-#### `tracking.py` - Tracking Middleware
-**Responsibility**: Monitor requests and errors
-- `@app.after_request` - Tracks request duration
-- `@app.errorhandler` - Tracks errors
-- Sends events to LaunchDarkly with `ld.track()`
+#### `middleware.py` - Request Tracking
+**Responsibility**: Automatic request tracking middleware
+- `register_track_request_duration()` - Track request timing
+- `register_track_errors()` - Track application errors
 
 ### `routes/` - HTTP Routes
 
 #### `__init__.py` - Route Registration
 **Responsibility**: Central blueprint registration
-- `register_routes()` - Registers all blueprints
+- `register_routes()` - Registers all blueprints with Flask app
 
 #### `web.py` - Web Routes
 **Responsibility**: Server-side rendered pages
-- `GET /` - Home page with feature flag
+- `GET /` - Home page showcasing LaunchDarkly Flask integration and Jinja2 template helpers
 - `GET /health` - Health check endpoint
 
 #### `api.py` - API Routes
 **Responsibility**: REST API endpoints
 - `GET /api/flag/<flag_key>` - Flag evaluation API
+- `GET /api/beta/experimental` - Feature-gated experimental endpoint
 
 ## 🔄 Request Flow
 
 ```
 1. Request arrives
    ↓
-2. middleware/context.py
-   - Builds g.ld_context (user context)
-   - Builds g.ld_request_context (request metadata)
-   - Records g.request_start_time
+2. app.py (@app.before_request)
+   - Creates request context with metadata
+   - Adds context to Flask's g object
    ↓
 3. Route handler (routes/web.py or routes/api.py)
-   - Calls get_flag() which uses g.ld_context
+   - Uses variation() to evaluate flags with current context
    - Returns response
    ↓
-4. middleware/tracking.py (@app.after_request)
-   - Calculates duration
-   - Tracks "request_completed" event
+4. middleware.py (@app.after_request)
+   - Calculates request duration
+   - Tracks "flask.response_time" event
    ↓
 5. Response sent
 
 If error occurs:
    ↓
-4. middleware/tracking.py (@app.errorhandler)
-   - Tracks "request_error" event
-   - Re-raises exception
+4. middleware.py (@app.teardown_request)
+   - Tracks "flask.error" event
+   - Logs error details
 ```
 
 ## ✅ Benefits of This Architecture
@@ -152,8 +148,9 @@ If error occurs:
 ### 1. **Separation of Concerns**
 Each module has a single, well-defined responsibility:
 - Routes only handle HTTP requests/responses
-- Middleware only handles cross-cutting concerns
 - LaunchDarkly package only handles LD integration
+- Templates only handle presentation logic
+- Tests only handle validation
 
 ### 2. **Testability**
 - Each module can be unit tested independently
@@ -167,50 +164,54 @@ Each module has a single, well-defined responsibility:
 
 ### 4. **Scalability**
 - Easy to add new routes (create new blueprint)
-- Easy to add new middleware (add to middleware package)
+- Easy to add new decorators (add to decorators.py)
 - Easy to add new context types (add to contexts.py)
+- Easy to add new tests (add to tests/)
 
 ### 5. **Reusability**
 - LaunchDarkly package can be reused in other projects
-- Middleware can be selectively enabled/disabled
+- Decorators can be used across different routes
 - Context builders can be used independently
+- Template helpers work in any Jinja2 template
 
 ## 🔐 LaunchDarkly Best Practices Maintained
 
-This refactoring maintains all LaunchDarkly best practices:
+This architecture maintains all LaunchDarkly best practices:
 
-✅ **Pre-fork initialization** - Client initialized in `launchdarkly/__init__.py` before app creation  
-✅ **Singleton pattern** - Single client instance via `get_client()`  
+✅ **Pre-fork initialization** - Client initialized in `app.py` before Gunicorn forking  
+✅ **Singleton pattern** - Single client instance via `ldclient.get()`  
 ✅ **Proper shutdown** - `atexit` handler closes client  
-✅ **Context per request** - Built in middleware, stored in `g`  
-✅ **Tracking events** - Request duration and errors tracked  
+✅ **Context per request** - Built in `@app.before_request`, stored in `g`  
+✅ **Tracking events** - Request duration and errors tracked automatically  
+✅ **Jinja2 integration** - Template helpers for seamless flag evaluation  
 
 ## 🚀 Adding New Features
 
 ### Adding a New Route
 1. Add function to `routes/web.py` or `routes/api.py`
-2. Use `get_flag()` to evaluate flags
-3. Done! Middleware automatically handles context and tracking
+2. Use `variation()` to evaluate flags
+3. Done! Context and tracking handled automatically
 
-### Adding New Middleware
-1. Create new file in `middleware/` (e.g., `auth.py`)
-2. Define registration function (e.g., `register_auth_middleware(app)`)
-3. Call from `middleware/__init__.py`
+### Adding New Decorators
+1. Add decorator function to `launchdarkly/decorators.py`
+2. Use in routes as needed
+3. Add tests to `tests/test_decorators.py`
 
-### Adding New Context Type
+### Adding New Context Types
 1. Add builder function to `launchdarkly/contexts.py`
-2. Call from `middleware/context.py` to build and store in `g`
-3. Use in routes as needed
+2. Use in `@app.before_request` or route decorators
+3. Add tests to `tests/test_contexts.py`
 
 ## 📊 Code Metrics
 
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| Lines in app.py | 173 | 28 | **-84%** |
-| Number of files | 1 | 11 | Better organization |
+| Lines in app.py | 173 | 66 | **-62%** |
+| Number of files | 1 | 12 | Better organization |
 | Concerns mixed | Yes | No | Clear separation |
 | Testability | Hard | Easy | Modular design |
 | Reusability | Low | High | Package structure |
+| Flask patterns | Basic | Extension | Idiomatic Flask |
 
 ## 🎯 Design Principles Applied
 

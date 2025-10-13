@@ -5,7 +5,7 @@ This guide helps you run the Flask + LaunchDarkly app with proper **postfork() b
 ## Prerequisites
 
 1. ✅ Docker Desktop installed and **running**
-2. ✅ `.env` file with your `LAUNCHDARKLY_SDK_KEY`
+2. ✅ `.env` file with your `FLASK_LAUNCHDARKLY__SDK_KEY`
 
 ## Steps to Run
 
@@ -84,9 +84,14 @@ docker-compose down -v
 
 ### 1. Pre-fork Initialization
 ```python
-# app.py - Lines 20-21
-ldclient.set_config(Config(SDK_KEY))
-ld = ldclient.get()
+# app.py - Lines 39-56
+ldclient.set_config(LDConfig(
+    sdk_key=ldconfig.get("SDK_KEY"),
+    send_events=ldconfig.get("SEND_EVENTS", True),
+    offline=ldconfig.get("OFFLINE", False),
+    # ... other config options
+))
+ld = LaunchDarkly(ldclient.get(), app)
 ```
 Client initialized **before** Gunicorn forks workers.
 
@@ -144,7 +149,7 @@ threads = 2   # For concurrent HTTP requests
 - Or change port in `docker-compose.yml`
 
 ### "postfork() failed"
-- Check `.env` file exists with valid SDK key
+- Check `.env` file exists with valid `FLASK_LAUNCHDARKLY__SDK_KEY`
 - Rebuild image: `docker-compose build --no-cache`
 - Check logs: `docker-compose logs -f`
 

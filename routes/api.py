@@ -3,8 +3,10 @@ API routes for REST endpoints.
 """
 from flask import Blueprint, jsonify, request
 
-from launchdarkly.flags import get_flag
-from launchdarkly.decorators import feature_gate
+from launchdarkly import variation
+
+from launchdarkly.decorators import require_flag
+from launchdarkly.contexts import get_context
 
 api_bp = Blueprint("api", __name__)
 
@@ -23,18 +25,17 @@ def read_flag(flag_key):
     Returns:
         JSON response with flag key, user, and value
     """
-    value = get_flag(flag_key, default=False)
-    user_key = request.args.get("user", "web-visitor")
+    value = variation(flag_key, default=False)
     
     return jsonify({
         "flag": flag_key,
-        "user": user_key,
-        "value": value
+        "value": value,
+        "context": get_context().to_dict() if get_context() else None
     })
 
 
 @api_bp.get("/beta/experimental")
-@feature_gate("enable-experimental-api", fallback=False)
+@require_flag("enable-experimental-api", default=False)
 def experimental_feature():
     """
     Example of a feature-gated endpoint.

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LaunchDarkly Flask Demo</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .demo-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+        }
+        .flag-value {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 18px;
+            font-weight: bold;
+            color: #1976d2;
+            text-align: center;
+            margin: 15px 0;
+        }
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            margin: 15px 0;
+        }
+        .highlight {
+            background: #fff3cd;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        .nav {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .nav a {
+            color: #667eea;
+            text-decoration: none;
+            margin: 0 10px;
+            padding: 8px 16px;
+            border: 1px solid #667eea;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+        .nav a:hover {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 LaunchDarkly Flask Demo</h1>
+        <p>Jinja2 Template Helpers in Action</p>
+    </div>
+
+    <div class="nav">
+        <a href="/">Home</a>
+        <a href="/api/flag/config-welcome-message">API</a>
+        <a href="/api/beta/experimental">Experimental API</a>
+    </div>
+
+    <div class="demo-section">
+        <h2>🎯 Feature Flag: <span class="highlight">config-welcome-message</span></h2>
+        <p>This page demonstrates the <code>ld_variation()</code> Jinja2 template helper:</p>
+        
+        <div class="code-block">
+{% raw %}{{ ld_variation('config-welcome-message', 'hello there!') }}{% endraw %}
+        </div>
+
+        <p><strong>Result:</strong></p>
+        <div class="flag-value">
+            {{ ld_variation('config-welcome-message', 'hello there!') }}
+        </div>
+    </div>
+
+    <div class="demo-section">
+        <h2>🔍 How It Works</h2>
+        <p>The template helper evaluates the LaunchDarkly flag <code>config-welcome-message</code> and returns:</p>
+        <ul>
+            <li><strong>Flag value</strong> if the flag exists and is configured</li>
+            <li><strong>Default value</strong> (<code>'hello there!'</code>) if the flag doesn't exist or evaluation fails</li>
+        </ul>
+        
+        <p><strong>Current context:</strong></p>
+        <div class="code-block">
+{% raw %}{{ ld_context() }}{% endraw %}
+        </div>
+        <p><em>{{ ld_context() }}</em></p>
+    </div>
+
+    <div class="demo-section">
+        <h2>🛠️ Try It Yourself</h2>
+        <p>To see different values:</p>
+        <ol>
+            <li>Create the flag <code>config-welcome-message</code> in your LaunchDarkly dashboard</li>
+            <li>Set different string values (e.g., "Welcome to our app!", "Hello world!", etc.)</li>
+            <li>Refresh this page to see the changes</li>
+            <li>Try targeting different users or segments</li>
+        </ol>
+        
+        <p><strong>API endpoint:</strong> <a href="/api/flag/config-welcome-message">/api/flag/config-welcome-message</a></p>
+    </div>
+
+    <div class="demo-section">
+        <h2>📝 Template Code</h2>
+        <p>Here's the actual template code used on this page:</p>
+        <div class="code-block">
+&lt;!-- Simple flag evaluation --&gt;
+{{ ld_variation('config-welcome-message', 'hello there!') }}
+
+&lt;!-- Conditional rendering --&gt;
+{% if ld_variation('show-feature', False) %}
+    &lt;div&gt;Feature is enabled!&lt;/div&gt;
+{% endif %}
+
+&lt;!-- Context information --&gt;
+{{ ld_context() }}
+        </div>
+    </div>
+</body>
+</html>

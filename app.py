@@ -1,60 +1,66 @@
-import os
+"""
+Flask + LaunchDarkly: Web & API Demo
+
+A production-ready Flask application demonstrating LaunchDarkly feature flag
+integration with both server-side rendering and REST API endpoints.
+
+This is the main application entry point that:
+1. Initializes the Flask app
+2. Registers middleware
+3. Registers routes
+
+The LaunchDarkly client is initialized in the launchdarkly package before
+this module is loaded, ensuring proper singleton initialization before
+Gunicorn forks workers.
+"""
+import logging
+import logging.config
 import atexit
-from flask import Flask, jsonify, render_template, request
-from dotenv import load_dotenv
-
-# Load .env for local/dev
-load_dotenv()
-
-from ldclient.config import Config
-from ldclient import Context
+import os
+from flask import Flask
+from ldclient.config import Config as LDConfig
 import ldclient
+from launchdarkly import LaunchDarkly
 
-# ---------------------------
-# 1) Initialize LD BEFORE forking (works best with Gunicorn --preload)
-# ---------------------------
-SDK_KEY = os.getenv("LAUNCHDARKLY_SDK_KEY", "")
-if not SDK_KEY:
-    raise RuntimeError("Set LAUNCHDARKLY_SDK_KEY in your environment or .env file.")
-
-ldclient.set_config(Config(SDK_KEY))
-ld = ldclient.get()
-
-# Ensure clean shutdown
-@atexit.register
-def _close_ld():
-    try:
-        ld.close()
-    except Exception:
-        pass
-
+from launchdarkly.contexts import add_context, create_request_context
+from flask import request
+from dotenv import load_dotenv
+from routes import register_routes
+from config import get_logging_config
+load_dotenv()
+# Create Flask application
 app = Flask(__name__)
 
-def user_context_from_request():
-    # Very basic demo context; in real apps, include real user attributes.
-    user_key = request.args.get("user", "anon")
-    return Context.builder(user_key).build()
+# use FLASK__LAUCHDARKLY__SDK_KEY to set the SDK key
+app.config.setdefault("LAUNCHDARKLY", {})
+app.config.from_prefixed_env(prefix="FLASK_")
+logging.config.dictConfig(get_logging_config(app.config))
+ldconfig = app.config.get("LAUNCHDARKLY")
+ldclient.set_config(LDConfig(
+    sdk_key=ldconfig.get("SDK_KEY"),
+    send_events=ldconfig.get("SEND_EVENTS", True),
+    offline=ldconfig.get("OFFLINE", False),
+    all_attributes_private=ldconfig.get("ALL_ATTRIBUTES_PRIVATE", False),
+    # avoid sending high cardinality contexts such as requests or sessions in index/identify events
+    omit_anonymous_contexts=ldconfig.get("OMIT_ANONYMOUS_CONTEXTS", True),
+    # allow overriding all uris with a single environment variable ENDPOINT_URI
+    base_uri=ldconfig.get("BASE_URI", ldconfig.get("ENDPOINT_URI", "https://app.launchdarkly.com")),
+    events_uri=ldconfig.get("EVENTS_URI", ldconfig.get("ENDPOINT_URI", "https://events.launchdarkly.com")),
+    stream_uri=ldconfig.get("STREAM_URI", ldconfig.get("ENDPOINT_URI", "https://stream.launchdarkly.com")),
+    application = {
+        "name": "Flask Demo",
+        "version": "1.0.0"
+    }
+))
+# log the config for debug
+ld = LaunchDarkly(ldclient.get(), app)
 
-@app.get("/")
-def home():
-    """Server-side rendered page that uses a flag to toggle a banner."""
-    flag_key = os.getenv("LD_FLAG_KEY_WEB_BANNER", "web-banner")
-    ctx = Context.builder("web-visitor").build()
-    banner_on = ld.variation(flag_key, ctx, default=False)
-    return render_template("index.html", banner_on=banner_on, flag_key=flag_key)
+# Add contexts to the request
+@app.before_request
+def build_request_context():
+    add_context(create_request_context())
 
-@app.get("/api/flag/<flag_key>")
-def read_flag(flag_key):
-    """Simple JSON API to evaluate any flag for a given user (?user=key)."""
-    ctx = user_context_from_request()
-    value = ld.variation(flag_key, ctx, default=False)
-    user_key = request.args.get("user", "anon")
-    return jsonify({
-        "flag": flag_key,
-        "user": user_key,
-        "value": value
-    })
 
-@app.get("/health")
-def health():
-    return "ok", 200
+
+# Register routes (web pages, API endpoints)
+register_routes(app)
